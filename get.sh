@@ -1,5 +1,5 @@
 #!/bin/bash
-# Heimdall Research Edition: download, verify and install on macOS.
+# Heimdall Lab Edition: download, verify and install on macOS.
 #
 # One line, pasted into Terminal:
 #   curl -fsSL https://raw.githubusercontent.com/bradykrowe/Heimdall-Research_Edition/v0.1.0-beta/get.sh | bash

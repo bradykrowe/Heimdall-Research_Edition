@@ -1,4 +1,4 @@
-# Clean-machine install of the Heimdall Research Edition on GitHub runners.
+# Clean-machine install of the Heimdall Lab Edition on GitHub runners.
 #
 # Each runner is stripped first (Homebrew, Node and Claude Code off a Mac;
 # Node and Python off Windows), then installed exactly the way the lab will:

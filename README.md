@@ -1,4 +1,10 @@
-# Heimdall, Research Edition (beta)
+# Heimdall Lab Edition (beta)
+
+[![install](https://github.com/bradykrowe/Heimdall-Research_Edition/actions/workflows/install.yml/badge.svg)](https://github.com/bradykrowe/Heimdall-Research_Edition/actions/workflows/install.yml)
+
+The badge is a clean-machine install on GitHub's macOS and Windows runners, with the
+software step on; it cannot prove the GUI steps, the password prompt, a Mac without
+Command Line Tools, or the lab's real sync client.
 
 One installer that gives a working scientist a second brain: an Obsidian vault
 with a folder tree for a lab, a set of thinking commands for Claude Code, and a
@@ -9,6 +15,15 @@ Everything lives on your machine. The vault is a folder of plain markdown. The
 only thing that leaves the computer is the text of each conversation with
 Claude, which goes to Anthropic to run the model. The bundle README inside the
 zip says this again, in a table, before you install.
+
+Each person in the lab gets a private vault. The lab shares one folder, `Lab/`,
+that every person's Claude reads first for lab questions. Notes reach it only
+through `/share-to-lab`, which shows the exact file and refuses anything private.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/lab_layer_dark.png">
+  <img src="docs/img/lab_layer_light.png" width="100%" alt="Five private vaults, one per role: PI, postdoc, graduate student, staff or core director, undergraduate or rotation. Notes reach the shared Lab/ folder only through /share-to-lab, which refuses People/, Journal/, System/, private notes and notes that name a lab member. Every Claude reads Lab/.">
+</picture>
 
 ## Install
 

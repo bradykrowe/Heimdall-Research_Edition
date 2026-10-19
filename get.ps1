@@ -1,5 +1,5 @@
 <#
-    Heimdall Research Edition: download, verify and install on Windows.
+    Heimdall Lab Edition: download, verify and install on Windows.
 
     One line, pasted into PowerShell:
       irm https://raw.githubusercontent.com/bradykrowe/Heimdall-Research_Edition/v0.1.0-beta/get.ps1 | iex
