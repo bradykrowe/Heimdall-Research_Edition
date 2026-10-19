@@ -158,7 +158,14 @@ if ($onMac) {
     Check ($n -eq 1) "Homebrew PATH line written once across the shell profiles" "Homebrew PATH line found $n time(s) across the shell profiles, expected 1"
     Check (Test-Path -LiteralPath "/opt/homebrew/bin/brew") "brew at /opt/homebrew/bin/brew" "brew missing at /opt/homebrew/bin/brew"
     Check (Test-Path -LiteralPath "/opt/homebrew/opt/python@3.12/bin/python3.12") "python@3.12 keg path present" "python@3.12 keg path missing"
-    foreach ($b in @("node", "npm", "claude")) { Check (Test-Path -LiteralPath "/opt/homebrew/bin/$b") "$b at /opt/homebrew/bin/$b" "$b missing at /opt/homebrew/bin/$b" }
+    # Node comes from Homebrew on macOS 15 and later, from the nodejs.org pkg
+    # (into /usr/local/bin) below that; claude follows npm's global prefix.
+    foreach ($b in @("node", "npm", "claude")) {
+        $found = @("/opt/homebrew/bin/$b", "/usr/local/bin/$b") | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+        Check ($null -ne $found) "$b at $found" "$b missing from /opt/homebrew/bin and /usr/local/bin"
+    }
+    $macMajor = [int]((& sw_vers -productVersion) -split "\.")[0]
+    if ($macMajor -lt 15) { Check (Test-Path -LiteralPath "/usr/local/bin/node") "macOS $macMajor: node from the nodejs.org pkg at /usr/local/bin/node" "macOS $macMajor: node not at /usr/local/bin/node, the pkg path did not run" }
     Check (Test-Path -LiteralPath "/Applications/Obsidian.app") "Obsidian.app present" "Obsidian.app missing"
     Check (Test-Path -LiteralPath (Join-Path $Vault "start_heimdall.command")) "start_heimdall.command present" "start_heimdall.command missing"
 }

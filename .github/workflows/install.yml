@@ -106,14 +106,14 @@ jobs:
           for f in "$HOME/.zprofile" "$HOME/.zshrc" "$HOME/.bash_profile" "$HOME/.bashrc" "$HOME/.profile"; do
             [ -f "$f" ] && sed -i '' '/brew shellenv/d' "$f"
           done
-          echo "PATH=/usr/bin:/bin:/usr/sbin:/sbin" >> "$GITHUB_ENV"
+          echo "PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin" >> "$GITHUB_ENV"
           echo "stripped"
 
       - name: Assert the macOS image is clean
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          export PATH=/usr/bin:/bin:/usr/sbin:/sbin; hash -r
+          export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin; hash -r
           fail=0
           for c in brew node claude; do
             if p="$(command -v "$c" 2>/dev/null)"; then echo "::error::$c still found at $p"; fail=1; fi
@@ -205,7 +205,7 @@ jobs:
         shell: bash
         run: |
           set +e -uo pipefail
-          export PATH=/usr/bin:/bin:/usr/sbin:/sbin; hash -r
+          export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin; hash -r
           mkdir -p "$RUNNER_TEMP/ci"
           RAW="https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$HEIMDALL_TAG/get.sh"
           echo "lab line: curl -fsSL $RAW | bash"
@@ -278,7 +278,7 @@ jobs:
         shell: bash
         run: |
           set +e -uo pipefail
-          export PATH=/usr/bin:/bin:/usr/sbin:/sbin; hash -r
+          export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin; hash -r
           RAW="https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$HEIMDALL_TAG/get.sh"
           curl -fsSL -H "Authorization: Bearer $GH_TOKEN" "$RAW" \
             | HEIMDALL_GITHUB_TOKEN="$GH_TOKEN" bash -s -- --unattended --no-launch --vault "$HOME/Second_Brain" 2>&1 \
