@@ -24,8 +24,22 @@ REPO="bradykrowe/Heimdall-Research_Edition"
 TAG="${HEIMDALL_TAG:-v0.1.0-beta}"
 DEST="${HEIMDALL_GET_DIR:-$HOME/Downloads}"
 
+# Private beta only: a GitHub token in HEIMDALL_GITHUB_TOKEN (or GH_TOKEN)
+# lets this script read a release that is not public yet. Leave it unset
+# otherwise; a public release needs no token and the script never sends one.
+TOKEN="${HEIMDALL_GITHUB_TOKEN:-${GH_TOKEN:-}}"
+
 say()  { printf '%s\n' "$*"; }
 die()  { printf 'get.sh: %s\n' "$*" >&2; exit 1; }
+
+gh_get() {
+  # gh_get <url> <output path, or - for stdout> <Accept header value>
+  if [ -n "$TOKEN" ]; then
+    curl -fsSL -H "Authorization: Bearer $TOKEN" -H "Accept: $3" -o "$2" "$1"
+  else
+    curl -fsSL -H "Accept: $3" -o "$2" "$1"
+  fi
+}
 
 case "$(uname -s)" in
   Darwin) ;;
@@ -59,18 +73,30 @@ fi
 
 API="https://api.github.com/repos/$REPO/releases/tags/$TAG"
 say "Reading release $TAG ..."
-JSON="$(curl -fsSL -H 'Accept: application/vnd.github+json' "$API")" || die "could not read the release $TAG. Check the tag and your network."
+JSON="$(gh_get "$API" - application/vnd.github+json)" || die "could not read the release $TAG. Check the tag and your network."
 
-ZIP_URL="$(printf '%s' "$JSON" | grep -o '"browser_download_url": *"[^"]*\.zip"' | head -n1 | sed 's/.*"\(https[^"]*\)"/\1/')"
-SHA_URL="$(printf '%s' "$JSON" | grep -o '"browser_download_url": *"[^"]*\.sha256"' | head -n1 | sed 's/.*"\(https[^"]*\)"/\1/')"
+if [ -n "$TOKEN" ]; then
+  # A release that is not public: assets come through the API by asset URL.
+  PAIRS="$(printf '%s' "$JSON" | tr ',' '\n' | awk -F'"' '
+    /"url": *"https:\/\/api\.github\.com\/repos\/.*\/releases\/assets\/[0-9]+"/ { u = $4 }
+    /^ *"name": *"/ && u != "" { print u "\t" $4; u = "" }')"
+  ZIP_URL="$(printf '%s\n' "$PAIRS" | awk -F'\t' '$2 ~ /\.zip$/ { print $1; exit }')"
+  ZIP_NAME="$(printf '%s\n' "$PAIRS" | awk -F'\t' '$2 ~ /\.zip$/ { print $2; exit }')"
+  SHA_URL="$(printf '%s\n' "$PAIRS" | awk -F'\t' '$2 ~ /\.sha256$/ { print $1; exit }')"
+  ACCEPT="application/octet-stream"
+else
+  ZIP_URL="$(printf '%s' "$JSON" | grep -o '"browser_download_url": *"[^"]*\.zip"' | head -n1 | sed 's/.*"\(https[^"]*\)"/\1/')"
+  SHA_URL="$(printf '%s' "$JSON" | grep -o '"browser_download_url": *"[^"]*\.sha256"' | head -n1 | sed 's/.*"\(https[^"]*\)"/\1/')"
+  ZIP_NAME="$(basename "$ZIP_URL")"
+  ACCEPT="*/*"
+fi
 [ -n "$ZIP_URL" ] || die "release $TAG has no .zip asset."
 [ -n "$SHA_URL" ] || die "release $TAG has no .sha256 asset."
 
-ZIP_NAME="$(basename "$ZIP_URL")"
 mkdir -p "$DEST"
 say "Downloading $ZIP_NAME ..."
-curl -fsSL -o "$DEST/$ZIP_NAME" "$ZIP_URL"
-curl -fsSL -o "$DEST/$ZIP_NAME.sha256" "$SHA_URL"
+gh_get "$ZIP_URL" "$DEST/$ZIP_NAME" "$ACCEPT" || die "download of $ZIP_NAME failed."
+gh_get "$SHA_URL" "$DEST/$ZIP_NAME.sha256" "$ACCEPT" || die "download of $ZIP_NAME.sha256 failed."
 
 EXPECTED="$(awk '{print $1}' "$DEST/$ZIP_NAME.sha256" | head -n1 | tr 'A-F' 'a-f')"
 ACTUAL="$(shasum -a 256 "$DEST/$ZIP_NAME" | awk '{print $1}')"

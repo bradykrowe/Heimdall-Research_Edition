@@ -1,0 +1,356 @@
+# Clean-machine install of the Heimdall Research Edition on GitHub runners.
+#
+# Each runner is stripped first (Homebrew, Node and Claude Code off a Mac;
+# Node and Python off Windows), then installed exactly the way the lab will:
+# the one-line get.sh on macOS, the Release zip on Windows. The software step
+# stays ON. Afterwards the job checks what landed, runs the installer a second
+# time and fails if anything outside the expected files changed.
+#
+# Triggers: by hand, or when a Release is published. Never on push: a macOS
+# minute on a private repo costs ten ordinary minutes, so runs are deliberate.
+#
+# What this cannot prove: anything behind a GUI, a real password prompt, a Mac
+# without Command Line Tools, or the lab's real sync client.
+
+name: install
+
+on:
+  workflow_dispatch:
+    inputs:
+      runners:
+        description: Which runners to use
+        type: choice
+        default: all
+        options:
+          - all
+          - macos-14
+          - macos-15
+          - windows-latest
+          - both-macos
+      tag:
+        description: Release tag to install from
+        type: string
+        default: v0.1.0-beta
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+env:
+  HEIMDALL_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag }}
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.pick.outputs.matrix }}
+    steps:
+      - id: pick
+        shell: bash
+        run: |
+          case "${{ github.event_name == 'release' && 'all' || inputs.runners }}" in
+            macos-14)       m='["macos-14"]' ;;
+            macos-15)       m='["macos-15"]' ;;
+            windows-latest) m='["windows-latest"]' ;;
+            both-macos)     m='["macos-14","macos-15"]' ;;
+            *)              m='["macos-14","macos-15","windows-latest"]' ;;
+          esac
+          echo "matrix={\"os\":$m}" >> "$GITHUB_OUTPUT"
+          echo "runners: $m"
+
+  install:
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+
+      # ------------------------------------------------------------ strip ----
+      - name: Strip the macOS image
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -uo pipefail
+          echo "== before =="
+          for c in brew node npm claude python3; do command -v "$c" || true; done
+          for p in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+            if [ -x "$p" ]; then
+              echo "uninstalling Homebrew at $(dirname "$(dirname "$p")")"
+              NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/uninstall.sh)" -- --force --path="$(dirname "$(dirname "$p")")" || true
+            fi
+          done
+          sudo rm -rf /opt/homebrew /usr/local/Homebrew /usr/local/Cellar /usr/local/Caskroom \
+            "$HOME/Library/Caches/Homebrew" "$HOME/Library/Logs/Homebrew" \
+            "$HOME/hostedtoolcache/node" /usr/local/lib/node_modules \
+            "$HOME/.npm" "$HOME/.claude" "$HOME/.heimdall" "$HOME/Second_Brain" /Applications/Obsidian.app
+          # Broken symlinks left behind under /usr/local.
+          sudo find -L /usr/local/bin /usr/local/lib /usr/local/share /usr/local/opt -type l -delete 2>/dev/null || true
+          hash -r
+          for c in brew node npm npx claude; do
+            while p="$(command -v "$c" 2>/dev/null)"; do echo "removing $p"; sudo rm -f "$p"; hash -r; done
+          done
+          for f in "$HOME/.zprofile" "$HOME/.zshrc" "$HOME/.bash_profile" "$HOME/.bashrc" "$HOME/.profile"; do
+            [ -f "$f" ] && sed -i '' '/brew shellenv/d' "$f"
+          done
+          echo "PATH=/usr/bin:/bin:/usr/sbin:/sbin" >> "$GITHUB_ENV"
+          echo "stripped"
+
+      - name: Assert the macOS image is clean
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          export PATH=/usr/bin:/bin:/usr/sbin:/sbin; hash -r
+          fail=0
+          for c in brew node claude; do
+            if p="$(command -v "$c" 2>/dev/null)"; then echo "::error::$c still found at $p"; fail=1; fi
+          done
+          for p in /opt/homebrew /usr/local/Homebrew /usr/local/bin/brew /usr/local/bin/node /usr/local/bin/claude /Applications/Obsidian.app; do
+            if [ -e "$p" ]; then echo "::error::$p still exists"; fail=1; fi
+          done
+          if grep -qs "brew shellenv" "$HOME/.zprofile" "$HOME/.bash_profile" "$HOME/.zshrc" "$HOME/.bashrc"; then
+            echo "::error::a brew shellenv line is still in a shell profile"; fail=1
+          fi
+          [ "$fail" -eq 0 ] && echo "clean: no brew, node or claude; arch $(uname -m); $(sw_vers -productVersion)"
+          exit "$fail"
+
+      - name: Strip the Windows image
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Continue"
+          Write-Host "== before =="
+          foreach ($c in @("node", "npm", "python", "python3", "py", "claude", "winget")) {
+            $g = Get-Command $c -ErrorAction SilentlyContinue
+            if ($g) { Write-Host "  $c -> $($g.Source)" }
+          }
+          # 1. Uninstall Node.js and Python entries so winget installs them fresh.
+          $keys = @("HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
+                    "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*",
+                    "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*")
+          foreach ($k in (Get-ItemProperty $keys -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like "Node.js*" -or $_.DisplayName -like "Python 3*" -or $_.DisplayName -like "Python Launcher*" })) {
+            Write-Host "uninstalling $($k.DisplayName)"
+            if ($k.PSChildName -match "^\{[0-9A-Fa-f-]+\}$") {
+              Start-Process msiexec.exe -ArgumentList "/x $($k.PSChildName) /qn /norestart" -Wait
+            } elseif ($k.UninstallString -match '^"?([^"]+\.exe)"?') {
+              Start-Process $Matches[1] -ArgumentList "/uninstall", "/quiet" -Wait -ErrorAction SilentlyContinue
+            }
+          }
+          # 2. Remove the folders, including the hosted tool cache copies.
+          $dirs = @("$env:ProgramFiles\nodejs", "${env:ProgramFiles(x86)}\nodejs", "C:\npm", "$env:APPDATA\npm",
+                    "$env:LOCALAPPDATA\npm-cache", "C:\hostedtoolcache\windows\node", "C:\hostedtoolcache\windows\Python",
+                    "C:\hostedtoolcache\windows\PyPy", "$env:LOCALAPPDATA\Programs\Python", "$env:ProgramFiles\Python3*",
+                    "C:\Python3*", "$env:LOCALAPPDATA\Heimdall", "$HOME\Second_Brain", "$HOME\.claude")
+          foreach ($d in $dirs) {
+            foreach ($p in (Resolve-Path $d -ErrorAction SilentlyContinue)) {
+              Write-Host "removing $p"
+              Remove-Item -LiteralPath $p -Recurse -Force -ErrorAction SilentlyContinue
+            }
+          }
+          # 3. The Store aliases that open the Microsoft Store when python is typed.
+          foreach ($a in @("python.exe", "python3.exe")) {
+            $p = Join-Path "$env:LOCALAPPDATA\Microsoft\WindowsApps" $a
+            if (Test-Path $p) { Write-Host "removing alias $p"; Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue }
+          }
+          # 4. PATH in the registry, which the installer re-reads after winget.
+          foreach ($scope in @("Machine", "User")) {
+            $cur = [Environment]::GetEnvironmentVariable("Path", $scope) -split ";"
+            $new = $cur | Where-Object { $_ -and ($_ -notmatch "nodejs|\\npm|hostedtoolcache\\windows\\(node|Python|PyPy)|Python3|Programs\\Python|Python\\Scripts") }
+            [Environment]::SetEnvironmentVariable("Path", ($new -join ";"), $scope)
+          }
+          $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
+          "PATH=$env:Path" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "stripped"
+
+      - name: Assert the Windows image is clean
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
+          $bad = 0
+          foreach ($c in @("node", "npm", "python", "python3", "py", "claude")) {
+            $g = Get-Command $c -ErrorAction SilentlyContinue
+            if ($g) { Write-Host "::error::$c still found at $($g.Source)"; $bad++ }
+          }
+          foreach ($p in @("$env:ProgramFiles\nodejs\node.exe", "C:\hostedtoolcache\windows\Python", "C:\hostedtoolcache\windows\node")) {
+            if (Test-Path $p) { Write-Host "::error::$p still exists"; $bad++ }
+          }
+          if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+            Write-Host "winget is not on this image; bootstrapping it with Microsoft.WinGet.Client"
+            Install-PackageProvider -Name NuGet -Force | Out-Null
+            Install-Module Microsoft.WinGet.Client -Force -Repository PSGallery -Scope CurrentUser
+            Repair-WinGetPackageManager -AllUsers
+          }
+          $w = Get-Command winget -ErrorAction SilentlyContinue
+          if (-not $w) { Write-Host "::error::winget unavailable, the installer needs it"; $bad++ } else { Write-Host "winget: $(& winget --version)" }
+          if ($bad -eq 0) { Write-Host "clean: no node, python or claude; $([Environment]::OSVersion.VersionString)" }
+          exit $bad
+
+      # ---------------------------------------------------------- install ----
+      - name: Install on macOS with the get line
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -uo pipefail
+          export PATH=/usr/bin:/bin:/usr/sbin:/sbin; hash -r
+          mkdir -p "$RUNNER_TEMP/ci"
+          RAW="https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$HEIMDALL_TAG/get.sh"
+          echo "lab line: curl -fsSL $RAW | bash"
+          echo "ci adds: --unattended --no-launch --vault ~/Second_Brain, and a token while the repo is private"
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" "$RAW" \
+            | HEIMDALL_GITHUB_TOKEN="$GH_TOKEN" bash -s -- --unattended --no-launch --vault "$HOME/Second_Brain" 2>&1 \
+            | tee "$RUNNER_TEMP/ci/first_run.txt"
+          code="${PIPESTATUS[1]}"
+          echo "installer exit code: $code"
+          UNPACK="$(dirname "$(find "$HOME/Downloads" -maxdepth 3 -name install_heimdall.sh | head -n1)")"
+          echo "UNPACK=$UNPACK" >> "$GITHUB_ENV"
+          echo "unpacked at: $UNPACK"
+          cp "$UNPACK/install_log.txt" "$RUNNER_TEMP/ci/install_log_first.txt" 2>/dev/null || echo "no install_log.txt found"
+          exit "$code"
+
+      - name: Install on Windows from the Release zip
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $false
+          $ci = Join-Path $env:RUNNER_TEMP "ci"; New-Item -ItemType Directory -Force $ci | Out-Null
+          $dl = Join-Path $env:RUNNER_TEMP "release"; New-Item -ItemType Directory -Force $dl | Out-Null
+          gh release download $env:HEIMDALL_TAG --repo $env:GITHUB_REPOSITORY --pattern "*.zip" --pattern "*.sha256" --dir $dl
+          if ($LASTEXITCODE -ne 0) { throw "gh release download failed with $LASTEXITCODE" }
+          $zip = Get-ChildItem $dl -Filter *.zip | Select-Object -First 1
+          $sha = Get-ChildItem $dl -Filter *.sha256 | Select-Object -First 1
+          $expected = ((Get-Content $sha.FullName -TotalCount 1) -split "\s+")[0].ToLower()
+          $actual = (Get-FileHash $zip.FullName -Algorithm SHA256).Hash.ToLower()
+          if ($expected -ne $actual) { throw "sha256 mismatch: expected $expected, got $actual" }
+          Write-Host "sha256 verified: $actual ($($zip.Name))"
+          $unpack = Join-Path $env:RUNNER_TEMP "unpacked"
+          Expand-Archive -Path $zip.FullName -DestinationPath $unpack -Force
+          $inner = (Get-ChildItem $unpack -Directory | Select-Object -First 1).FullName
+          "UNPACK=$inner" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "unpacked at: $inner"
+          $vault = Join-Path $HOME "Second_Brain"
+          & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $inner "Install_Heimdall.ps1") -Unattended -NoLaunch -VaultPath $vault 2>&1 | Tee-Object -FilePath (Join-Path $ci "first_run.txt")
+          $code = $LASTEXITCODE
+          Write-Host "installer exit code: $code"
+          Copy-Item (Join-Path $inner "install_log.txt") (Join-Path $ci "install_log_first.txt") -ErrorAction SilentlyContinue
+          if ($code -ne 0) { exit $code }
+
+      # ----------------------------------------------------------- assert ----
+      - name: Assert the first install
+        shell: pwsh
+        run: |
+          $ci = Join-Path $env:RUNNER_TEMP "ci"
+          & "$env:GITHUB_WORKSPACE/.github/scripts/assert_install.ps1" -Vault (Join-Path $HOME "Second_Brain") -Unpack $env:UNPACK -Log (Join-Path $ci "install_log_first.txt") -Console (Join-Path $ci "first_run.txt") -Phase first 2>&1 | Tee-Object -FilePath (Join-Path $ci "assert_first.txt")
+          exit $LASTEXITCODE
+
+      - name: Snapshot before the second run
+        shell: pwsh
+        run: |
+          $ci = Join-Path $env:RUNNER_TEMP "ci"
+          $roots = @((Join-Path $HOME "Second_Brain"), (Join-Path $HOME ".claude"))
+          if ($IsMacOS) { $roots += @((Join-Path $HOME ".heimdall"), (Join-Path $HOME ".zprofile"), (Join-Path $HOME ".bash_profile"), (Join-Path $HOME ".zshrc"), (Join-Path $HOME ".bashrc"), (Join-Path $HOME "Library/Application Support/obsidian/obsidian.json")) }
+          if ($IsWindows) { $roots += @((Join-Path $env:LOCALAPPDATA "Heimdall"), (Join-Path $env:APPDATA "obsidian\obsidian.json")) }
+          & "$env:GITHUB_WORKSPACE/.github/scripts/snapshot.ps1" -Paths $roots -Out (Join-Path $ci "snapshot_before.tsv")
+
+      # ------------------------------------------------------- second run ----
+      - name: Run the installer a second time (macOS, get line again)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -uo pipefail
+          export PATH=/usr/bin:/bin:/usr/sbin:/sbin; hash -r
+          RAW="https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$HEIMDALL_TAG/get.sh"
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" "$RAW" \
+            | HEIMDALL_GITHUB_TOKEN="$GH_TOKEN" bash -s -- --unattended --no-launch --vault "$HOME/Second_Brain" 2>&1 \
+            | tee "$RUNNER_TEMP/ci/second_run.txt"
+          code="${PIPESTATUS[1]}"
+          echo "installer exit code: $code"
+          cp "$UNPACK/install_log.txt" "$RUNNER_TEMP/ci/install_log_second.txt" 2>/dev/null || echo "no install_log.txt found"
+          exit "$code"
+
+      - name: Run the installer a second time (Windows, get.ps1 against the Release)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $false
+          $ci = Join-Path $env:RUNNER_TEMP "ci"
+          $raw = "https://raw.githubusercontent.com/$env:GITHUB_REPOSITORY/$env:HEIMDALL_TAG/get.ps1"
+          Write-Host "lab line: irm $raw | iex"
+          Write-Host "ci runs the same file with -Unattended -NoLaunch -VaultPath, and a token while the repo is private"
+          $getPs1 = Join-Path $env:RUNNER_TEMP "get.ps1"
+          Invoke-WebRequest -Uri $raw -Headers @{ Authorization = "Bearer $env:GH_TOKEN" } -OutFile $getPs1
+          $env:HEIMDALL_GITHUB_TOKEN = $env:GH_TOKEN
+          & powershell -NoProfile -ExecutionPolicy Bypass -File $getPs1 -Unattended -NoLaunch -VaultPath (Join-Path $HOME "Second_Brain") 2>&1 | Tee-Object -FilePath (Join-Path $ci "second_run.txt")
+          $code = $LASTEXITCODE
+          Write-Host "get.ps1 exit code: $code"
+          $log = Get-ChildItem (Join-Path $HOME "Downloads") -Recurse -Filter install_log.txt | Select-Object -First 1
+          if ($log) { Copy-Item $log.FullName (Join-Path $ci "install_log_second.txt") } else { Write-Host "no install_log.txt found under Downloads" }
+          if ($code -ne 0) { exit $code }
+
+      - name: Nothing outside the expected files changed
+        shell: pwsh
+        run: |
+          $ci = Join-Path $env:RUNNER_TEMP "ci"
+          $roots = @((Join-Path $HOME "Second_Brain"), (Join-Path $HOME ".claude"))
+          if ($IsMacOS) { $roots += @((Join-Path $HOME ".heimdall"), (Join-Path $HOME ".zprofile"), (Join-Path $HOME ".bash_profile"), (Join-Path $HOME ".zshrc"), (Join-Path $HOME ".bashrc"), (Join-Path $HOME "Library/Application Support/obsidian/obsidian.json")) }
+          if ($IsWindows) { $roots += @((Join-Path $env:LOCALAPPDATA "Heimdall"), (Join-Path $env:APPDATA "obsidian\obsidian.json")) }
+          & "$env:GITHUB_WORKSPACE/.github/scripts/snapshot.ps1" -Paths $roots -Out (Join-Path $ci "snapshot_after.tsv")
+          # health_baseline.md is rewritten on every run (same content on the same day).
+          & "$env:GITHUB_WORKSPACE/.github/scripts/snapshot.ps1" -Compare -Before (Join-Path $ci "snapshot_before.tsv") -After (Join-Path $ci "snapshot_after.tsv") -Allow "System/health_baseline.md" 2>&1 | Tee-Object -FilePath (Join-Path $ci "second_run_changes.txt")
+          exit $LASTEXITCODE
+
+      - name: Assert the second install
+        shell: pwsh
+        run: |
+          $ci = Join-Path $env:RUNNER_TEMP "ci"
+          & "$env:GITHUB_WORKSPACE/.github/scripts/assert_install.ps1" -Vault (Join-Path $HOME "Second_Brain") -Unpack $env:UNPACK -Log (Join-Path $ci "install_log_second.txt") -Console (Join-Path $ci "second_run.txt") -Phase second 2>&1 | Tee-Object -FilePath (Join-Path $ci "assert_second.txt")
+          exit $LASTEXITCODE
+
+      # -------------------------------------------------------- artifacts ----
+      - name: Vault listing
+        if: always()
+        shell: pwsh
+        run: |
+          $ci = Join-Path $env:RUNNER_TEMP "ci"; New-Item -ItemType Directory -Force $ci | Out-Null
+          $vault = Join-Path $HOME "Second_Brain"
+          if (Test-Path $vault) {
+            Get-ChildItem -LiteralPath $vault -Recurse -Force | ForEach-Object { $_.FullName.Substring($vault.Length).TrimStart("\", "/").Replace("\", "/") } | Sort-Object | Set-Content (Join-Path $ci "vault_listing.txt")
+            Write-Host "$((Get-Content (Join-Path $ci 'vault_listing.txt')).Count) entries in the vault"
+          } else { Set-Content (Join-Path $ci "vault_listing.txt") "no vault at $vault" }
+
+      - name: Upload install log, summary, vault listing
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: install-${{ matrix.os }}
+          path: ${{ runner.temp }}/ci/
+          if-no-files-found: warn
+
+# ---------------------------------------------------------------- stubs ----
+# These jobs land when their sessions report. They stay commented so the
+# workflow above is the only live surface until then.
+#
+#  update:          # M3b update path. An untouched file takes the new version;
+#                   # an edited one stays with a .new beside it. The person's
+#                   # files and everything in Lab/ are byte-identical after the
+#                   # update, and rollback restores. Runs get.sh --update <tag>
+#                   # on macOS and Install_Heimdall.ps1 -Update on Windows.
+#    needs: install
+#
+#  lab-layer:       # M3c lab layer. Two vaults, --role pi and --role student,
+#                   # on one shared temp folder. The G6 checks run headless.
+#    needs: install
+#
+#  feedback:        # M3d feedback. Plant a canary, send /feedback to the
+#                   # staging intake, assert the note arrived while the canary
+#                   # and any name did not.
+#    needs: install

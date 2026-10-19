@@ -31,8 +31,16 @@ $ErrorActionPreference = "Stop"
 $Repo = "bradykrowe/Heimdall-Research_Edition"
 $Dest = Join-Path $env:USERPROFILE "Downloads"
 
+# Private beta only: a GitHub token in HEIMDALL_GITHUB_TOKEN (or GH_TOKEN)
+# lets this script read a release that is not public yet. Leave it unset
+# otherwise; a public release needs no token and the script never sends one.
+$Token = $env:HEIMDALL_GITHUB_TOKEN
+if (-not $Token) { $Token = $env:GH_TOKEN }
+$ApiHeaders = @{ Accept = "application/vnd.github+json" }
+if ($Token) { $ApiHeaders["Authorization"] = "Bearer $Token" }
+
 Write-Host "Reading release $Tag ..."
-$rel = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/tags/$Tag" -Headers @{ Accept = "application/vnd.github+json" }
+$rel = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/tags/$Tag" -Headers $ApiHeaders
 $zipAsset = $rel.assets | Where-Object { $_.name -like "*.zip" } | Select-Object -First 1
 $shaAsset = $rel.assets | Where-Object { $_.name -like "*.sha256" } | Select-Object -First 1
 if (-not $zipAsset) { throw "release $Tag has no .zip asset." }
@@ -41,8 +49,15 @@ if (-not $shaAsset) { throw "release $Tag has no .sha256 asset." }
 $zipPath = Join-Path $Dest $zipAsset.name
 $shaPath = Join-Path $Dest $shaAsset.name
 Write-Host "Downloading $($zipAsset.name) ..."
-Invoke-WebRequest -Uri $zipAsset.browser_download_url -OutFile $zipPath
-Invoke-WebRequest -Uri $shaAsset.browser_download_url -OutFile $shaPath
+if ($Token) {
+    # A release that is not public: assets come through the API by asset URL.
+    $dlHeaders = @{ Accept = "application/octet-stream"; Authorization = "Bearer $Token" }
+    Invoke-WebRequest -Uri $zipAsset.url -Headers $dlHeaders -OutFile $zipPath
+    Invoke-WebRequest -Uri $shaAsset.url -Headers $dlHeaders -OutFile $shaPath
+} else {
+    Invoke-WebRequest -Uri $zipAsset.browser_download_url -OutFile $zipPath
+    Invoke-WebRequest -Uri $shaAsset.browser_download_url -OutFile $shaPath
+}
 
 $expected = ((Get-Content $shaPath -TotalCount 1) -split '\s+')[0].ToLower()
 $actual = (Get-FileHash -Algorithm SHA256 -Path $zipPath).Hash.ToLower()
