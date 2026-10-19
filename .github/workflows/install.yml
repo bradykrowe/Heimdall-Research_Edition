@@ -46,6 +46,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.pick.outputs.matrix }}
+      vault_matrix: ${{ steps.pick.outputs.vault_matrix }}
     steps:
       - id: pick
         shell: bash
@@ -60,6 +61,11 @@ jobs:
           esac
           echo "matrix={\"os\":$m}" >> "$GITHUB_OUTPUT"
           echo "runners: $m"
+          # The vault-only jobs (update, lab-layer) run on macos-15 and
+          # windows-latest when those are selected; never on macos-14.
+          v="$(printf '%s' "$m" | tr -d '[]' | tr ',' '\n' | grep -v macos-14 | paste -sd, - || true)"
+          echo "vault_matrix=[${v}]" >> "$GITHUB_OUTPUT"
+          echo "vault-only runners: [${v}]"
 
   install:
     needs: plan
@@ -224,12 +230,8 @@ jobs:
       - name: Install on Windows from the Release zip
         if: runner.os == 'Windows'
         shell: pwsh
-        # Workaround, findings.md 2026-10-19 (owner A): under Windows PowerShell
-        # 5.1 an npm warning on stderr becomes a terminating error inside
-        # Install_Heimdall.ps1 and the install dies at the Claude Code step.
-        # Silencing npm warnings keeps CI moving; the lab has no such shield.
         env:
-          NPM_CONFIG_LOGLEVEL: error
+          PYTHONUTF8: "1"
         run: |
           $ErrorActionPreference = "Stop"
           $PSNativeCommandUseErrorActionPreference = $false
@@ -292,7 +294,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         env:
-          NPM_CONFIG_LOGLEVEL: error
+          PYTHONUTF8: "1"
         run: |
           $ErrorActionPreference = "Stop"
           $PSNativeCommandUseErrorActionPreference = $false
@@ -349,22 +351,148 @@ jobs:
           path: ${{ runner.temp }}/ci/
           if-no-files-found: warn
 
-# ---------------------------------------------------------------- stubs ----
-# These jobs land when their sessions report. They stay commented so the
-# workflow above is the only live surface until then.
-#
-#  update:          # M3b update path. An untouched file takes the new version;
-#                   # an edited one stays with a .new beside it. The person's
-#                   # files and everything in Lab/ are byte-identical after the
-#                   # update, and rollback restores. Runs get.sh --update <tag>
-#                   # on macOS and Install_Heimdall.ps1 -Update on Windows.
-#    needs: install
-#
-#  lab-layer:       # M3c lab layer. Two vaults, --role pi and --role student,
-#                   # on one shared temp folder. The G6 checks run headless.
-#    needs: install
-#
-#  feedback:        # M3d feedback. Plant a canary, send /feedback to the
-#                   # staging intake, assert the note arrived while the canary
-#                   # and any name did not.
-#    needs: install
+  # ------------------------------------------------------- vault-only jobs ----
+  # The three jobs below install the vault with the software step skipped, on
+  # macos-15 and windows-latest only (macos-14 is about the Sonoma software
+  # path, which the install job covers). They need nothing from the install
+  # job, so they run beside it and a red install does not hide their result.
+
+  update:
+    # M3b update path, the way the installer suites rehearse it: install, edit
+    # a shipped file, update from a patched bundle with a new TAG, update again,
+    # roll back twice. Edited files keep the edit with a .new beside them,
+    # untouched files take the new version, Lab/, System/secrets/ and
+    # .obsidian/ are byte-identical throughout, rollback restores the record.
+    needs: plan
+    if: needs.plan.outputs.vault_matrix != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJson(needs.plan.outputs.vault_matrix) }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+      - name: Download and verify the Release zip
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"; $PSNativeCommandUseErrorActionPreference = $false
+          $dl = Join-Path $env:RUNNER_TEMP "release"; New-Item -ItemType Directory -Force $dl | Out-Null
+          gh release download $env:HEIMDALL_TAG --repo $env:GITHUB_REPOSITORY --pattern "*.zip" --pattern "*.sha256" --dir $dl
+          if ($LASTEXITCODE -ne 0) { throw "gh release download failed with $LASTEXITCODE" }
+          $zip = Get-ChildItem $dl -Filter *.zip | Select-Object -First 1
+          $want = ((Get-Content (Join-Path $dl ($zip.Name + ".sha256")) -Raw) -split "\s+")[0].ToLower()
+          $got = (Get-FileHash $zip.FullName -Algorithm SHA256).Hash.ToLower()
+          if ($got -ne $want) { throw "sha256 mismatch: $got vs $want" }
+          Expand-Archive $zip.FullName -DestinationPath (Join-Path $env:RUNNER_TEMP "unpack") -Force
+          $root = (Get-ChildItem (Join-Path $env:RUNNER_TEMP "unpack") -Directory | Select-Object -First 1).FullName
+          "UNPACK=$root" >> $env:GITHUB_ENV
+          Write-Host "bundle: $root, TAG $(Get-Content (Join-Path $root 'TAG') -Raw)"
+      - name: Update rehearsal
+        shell: pwsh
+        run: |
+          $ci = Join-Path $env:RUNNER_TEMP "ci"; New-Item -ItemType Directory -Force $ci | Out-Null
+          $work = Join-Path $env:RUNNER_TEMP "update_work"; New-Item -ItemType Directory -Force $work | Out-Null
+          $vault = Join-Path $env:RUNNER_TEMP "update_vault"
+          pwsh -NoProfile -File .github/scripts/update_rehearsal.ps1 -Bundle $env:UNPACK -Vault $vault -Work $work -Console (Join-Path $ci "update_console.txt")
+          exit $LASTEXITCODE
+      - name: Upload update console
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: update-${{ matrix.os }}
+          path: ${{ runner.temp }}/ci/
+          if-no-files-found: warn
+
+  lab-layer:
+    # M3c lab layer, G6 headless subset: two vaults (role pi, role grad) linked
+    # at install to one shared folder, a share preview that writes nothing, a
+    # share that lands and is readable from the other vault, the link check.
+    # The macOS leg runs here for the first time anywhere.
+    needs: plan
+    if: needs.plan.outputs.vault_matrix != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJson(needs.plan.outputs.vault_matrix) }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+      - name: Download and verify the Release zip
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"; $PSNativeCommandUseErrorActionPreference = $false
+          $dl = Join-Path $env:RUNNER_TEMP "release"; New-Item -ItemType Directory -Force $dl | Out-Null
+          gh release download $env:HEIMDALL_TAG --repo $env:GITHUB_REPOSITORY --pattern "*.zip" --pattern "*.sha256" --dir $dl
+          if ($LASTEXITCODE -ne 0) { throw "gh release download failed with $LASTEXITCODE" }
+          $zip = Get-ChildItem $dl -Filter *.zip | Select-Object -First 1
+          $want = ((Get-Content (Join-Path $dl ($zip.Name + ".sha256")) -Raw) -split "\s+")[0].ToLower()
+          $got = (Get-FileHash $zip.FullName -Algorithm SHA256).Hash.ToLower()
+          if ($got -ne $want) { throw "sha256 mismatch: $got vs $want" }
+          Expand-Archive $zip.FullName -DestinationPath (Join-Path $env:RUNNER_TEMP "unpack") -Force
+          $root = (Get-ChildItem (Join-Path $env:RUNNER_TEMP "unpack") -Directory | Select-Object -First 1).FullName
+          "UNPACK=$root" >> $env:GITHUB_ENV
+      - name: Lab layer rehearsal
+        shell: pwsh
+        run: |
+          $ci = Join-Path $env:RUNNER_TEMP "ci"; New-Item -ItemType Directory -Force $ci | Out-Null
+          $work = Join-Path $env:RUNNER_TEMP "lab_work"; New-Item -ItemType Directory -Force $work | Out-Null
+          pwsh -NoProfile -File .github/scripts/lab_layer_rehearsal.ps1 -Bundle $env:UNPACK -Work $work -Console (Join-Path $ci "lab_console.txt")
+          exit $LASTEXITCODE
+      - name: Upload lab layer console
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lab-layer-${{ matrix.os }}
+          path: ${{ runner.temp }}/ci/
+          if-no-files-found: warn
+
+  feedback:
+    # M3d feedback, one post per run (the staging intake allows 10 a day per
+    # address and 40 in total). A temp vault from the bundle payload, a planted
+    # canary, one report through the shipped feedback.py with the doctor report
+    # attached. The reply must carry a report number and the printed payload
+    # must carry neither the canary nor the runner user name. Rows land on the
+    # Desk with the staging badge; the maintainer rejects them there.
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+      - name: Download, verify and unpack the Release zip
+        shell: bash
+        run: |
+          dl="$RUNNER_TEMP/release"; mkdir -p "$dl"
+          gh release download "$HEIMDALL_TAG" --repo "$GITHUB_REPOSITORY" --pattern "*.zip" --pattern "*.sha256" --dir "$dl"
+          cd "$dl" && sha256sum -c ./*.sha256
+          mkdir -p "$RUNNER_TEMP/unpack" && unzip -q ./*.zip -d "$RUNNER_TEMP/unpack"
+          root="$(find "$RUNNER_TEMP/unpack" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+          echo "UNPACK=$root" >> "$GITHUB_ENV"
+      - name: Feedback rehearsal
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/ci" "$RUNNER_TEMP/feedback_work"
+          python3 -I .github/scripts/feedback_check.py --bundle "$UNPACK" --work "$RUNNER_TEMP/feedback_work" --tag "$HEIMDALL_TAG" --run-id "$GITHUB_RUN_ID" 2>&1 | tee "$RUNNER_TEMP/ci/feedback_console.txt"
+          exit "${PIPESTATUS[0]}"
+      - name: Upload feedback console
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: feedback-ubuntu
+          path: ${{ runner.temp }}/ci/
+          if-no-files-found: warn
