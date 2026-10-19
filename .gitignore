@@ -1,0 +1,14 @@
+# Nothing from a vault, a build or a test run is ever committed here.
+*.zip
+*.sha256
+install_log.txt
+.env
+*.env
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+*.bak
+*.bak_*
+contamination_terms.txt
