@@ -165,7 +165,7 @@ if ($onMac) {
         Check ($null -ne $found) "$b at $found" "$b missing from /opt/homebrew/bin and /usr/local/bin"
     }
     $macMajor = [int]((& sw_vers -productVersion) -split "\.")[0]
-    if ($macMajor -lt 15) { Check (Test-Path -LiteralPath "/usr/local/bin/node") "macOS $macMajor: node from the nodejs.org pkg at /usr/local/bin/node" "macOS $macMajor: node not at /usr/local/bin/node, the pkg path did not run" }
+    if ($macMajor -lt 15) { Check (Test-Path -LiteralPath "/usr/local/bin/node") "macOS ${macMajor}: node from the nodejs.org pkg at /usr/local/bin/node" "macOS ${macMajor}: node not at /usr/local/bin/node, the pkg path did not run" }
     Check (Test-Path -LiteralPath "/Applications/Obsidian.app") "Obsidian.app present" "Obsidian.app missing"
     Check (Test-Path -LiteralPath (Join-Path $Vault "start_heimdall.command")) "start_heimdall.command present" "start_heimdall.command missing"
 }
