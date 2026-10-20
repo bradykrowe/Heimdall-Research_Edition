@@ -71,6 +71,10 @@ jobs:
         env:
           REF: ${{ inputs.ref }}
           HEIMDALL_TAG: ${{ inputs.tag }}
+          # The runner's shared address has no unauthenticated API quota left
+          # (run 39447243558 got 403 on the Release lookup); get.sh reads GH_TOKEN
+          # for exactly this case and never prints it.
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -uo pipefail
           export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin; hash -r
