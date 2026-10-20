@@ -188,7 +188,8 @@ if ($onWin) {
     try { $pv = & python -c "import sys; print(sys.version_info[0]*100+sys.version_info[1])" 2>&1 | Select-Object -First 1 } catch { }
     Check ("$pv" -match "^\d+$" -and [int]$pv -ge 311) "python reports 3.11 or newer ($pv)" "python version probe failed or too old ($pv)"
     $obs = @((Join-Path $env:LOCALAPPDATA "Obsidian\Obsidian.exe"), (Join-Path $env:ProgramFiles "Obsidian\Obsidian.exe"), (Join-Path $env:LOCALAPPDATA "Programs\Obsidian\Obsidian.exe")) | Where-Object { Test-Path -LiteralPath $_ }
-    if ($obs) { Ok "Obsidian.exe at $($obs[0])" } else { Write-Host "  [warn] Obsidian.exe not found in the usual places (installer only warns about this)" }
+    $obs = @($obs)
+    if ($obs.Count -gt 0) { Ok "Obsidian.exe at $($obs[0])" } else { Write-Host "  [warn] Obsidian.exe not found in the usual places (installer only warns about this)" }
     Check (Test-Path -LiteralPath (Join-Path $Vault "Start_Heimdall.cmd")) "Start_Heimdall.cmd present" "Start_Heimdall.cmd missing"
 }
 
