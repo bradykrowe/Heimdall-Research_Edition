@@ -98,7 +98,8 @@ jobs:
         if: always()
         shell: bash
         run: |
-          set -uo pipefail
+          # Diagnostics: a missing path is a finding, not a reason to stop.
+          set +e -uo pipefail
           for p in /opt/homebrew/bin/brew /usr/local/bin/brew; do [ -x "$p" ] && eval "$("$p" shellenv)" && break; done
           hash -r
           {
@@ -109,6 +110,8 @@ jobs:
             echo; echo "## ~/Second_Brain/System"; ls -1 "$HOME/Second_Brain/System" 2>&1
             echo; echo "## ~/.claude"; ls -1 "$HOME/.claude" 2>&1
             echo; echo "## START_HERE.md"; head -n 40 "$HOME/Second_Brain/START_HERE.md" 2>&1
+            echo; echo "## ~/.claude/CLAUDE.md (carrier stub)"; head -n 30 "$HOME/.claude/CLAUDE.md" 2>&1
+            echo; echo "## Downloads tree (depth 4)"; find "$HOME/Downloads" -maxdepth 4 2>/dev/null | head -n 60
             echo; echo "## display"; system_profiler SPDisplaysDataType 2>/dev/null | grep -i resolution || true
           } > "$RUNNER_TEMP/rec/after_install.txt" 2>&1
           cat "$RUNNER_TEMP/rec/after_install.txt"

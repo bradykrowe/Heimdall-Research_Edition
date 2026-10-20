@@ -29,7 +29,7 @@ ANSWERS = [
     (r"Continue\? \[Y/n\] $",                          "y\r", 1.6),
     (r"Install Homebrew now\? \[Y/n\] $",               "y\r", 1.4),
     (r"Press RETURN/ENTER to continue or any other key to abort:?\s*$", "\r", 1.2),
-    (r"Vault path \[[^\]]*\]: $",                       "\r",  2.0),
+    (r"Vault (path|folder) \[[^\]]*\]: $",              "\r",  2.0),
     (r"Paste its path, or press Return to skip: $",     "\r",  1.4),
     (r"Open the vault in Obsidian now\? \[Y/n\] $",     "n\r", 1.6),
     (r"Start Claude in the vault now\? \[Y/n\] $",      "n\r", 1.6),

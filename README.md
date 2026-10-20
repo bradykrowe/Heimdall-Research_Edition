@@ -40,6 +40,8 @@ short and commented.
 curl -fsSL https://raw.githubusercontent.com/bradykrowe/Heimdall-Research_Edition/v0.1.0-beta/get.sh | bash
 ```
 
+The questions are the same on both systems; the Windows recording below shows them.
+
 If your Mac is managed and you are not an administrator, the script says so and
 stops before installing anything. Ask IT to install Obsidian, Node.js, Python
 3.12 and Claude Code, then run the same line with `bash -s -- --skip-software`
@@ -52,6 +54,12 @@ Paste this into PowerShell. Read [get.ps1](get.ps1) first if you like.
 ```powershell
 irm https://raw.githubusercontent.com/bradykrowe/Heimdall-Research_Edition/v0.1.0-beta/get.ps1 | iex
 ```
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/install_windows_dark.gif">
+  <img src="docs/img/install_windows_light.gif" alt="A PowerShell window. The install line is pasted, the release is downloaded and unpacked, and the installer asks the same questions, then prints the vault path and the next step.">
+</picture>
+The same install on a fresh Windows profile. The window stays open at the end with the next step printed.
 
 If Windows shows a SmartScreen warning, that is because the scripts are not
 code-signed. Choose More info, then Run anyway.
@@ -76,12 +84,17 @@ Gatekeeper and SmartScreen prompts.
 
 ## What is in the zip
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/zip_contents_dark.png">
+  <img src="docs/img/zip_contents_light.png" width="100%" alt="The zip holds one folder, Heimdall_Lab_Install, with a double-click launcher for macOS and one for Windows, the two plain-text installers, a manifest of pinned versions, and a payload: Claude commands and skills, two Obsidian config files, and the starter vault with START_HERE.md, CLAUDE.md and its folders.">
+</picture>
+
 | Part | What |
 |---|---|
 | `Install_Heimdall.ps1`, `install_heimdall.sh` | The installers, plain text, commented |
 | `payload/vault/` | The starter vault: Lab, Literature, Projects, Manuscripts, Grants, Teaching, Service, People and the system folders, with templates |
-| `payload/claude/commands/` | 23 thinking commands, including `/paper`, `/protocol` and `/today` |
-| `payload/claude/skills/` | 8 skills |
+| `payload/claude/commands/` | 28 thinking commands, including `/paper`, `/protocol` and `/today` |
+| `payload/claude/skills/` | 9 skills |
 | `manifest/plugins.json` | The Obsidian plugins, by tier, with a reason for each |
 
 ## Beta

@@ -84,6 +84,12 @@ if ($NoLaunch)     { $args += "-NoLaunch" }
 
 Write-Host "Starting the installer from $($inner.FullName)"
 Write-Host ""
-Set-Location $inner.FullName
-& powershell -NoProfile -ExecutionPolicy Bypass -File $installer @args
-exit $LASTEXITCODE
+Push-Location $inner.FullName
+try { & powershell -NoProfile -ExecutionPolicy Bypass -File $installer @args; $code = $LASTEXITCODE }
+finally { Pop-Location }
+
+# Pasted as "irm ... | iex" this runs inside your own PowerShell window, where
+# "exit" would close the window and take the installer's last words with it.
+# Only a file run (powershell -File get.ps1, as CI does) carries the code out.
+if ($MyInvocation.MyCommand.Path) { exit $code }
+if ($code -ne 0) { Write-Host "The installer stopped with code $code. install_log.txt beside it says why." }
