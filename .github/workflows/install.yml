@@ -327,23 +327,11 @@ jobs:
           if ($IsWindows) { $roots += @((Join-Path $env:LOCALAPPDATA "Heimdall"), (Join-Path $env:APPDATA "obsidian\obsidian.json")) }
           & "$env:GITHUB_WORKSPACE/.github/scripts/snapshot.ps1" -Paths $roots -Out (Join-Path $ci "snapshot_after.tsv")
           # health_baseline.md is rewritten on every run (same content on the same day).
+          # .obsidian/app.json was allowed on Windows for one run (key-order rewrite,
+          # findings.md 2026-10-20); the installer now writes it ordered and only on change.
           $allow = @("System/health_baseline.md")
-          if ($IsWindows) {
-            # Workaround, findings.md 2026-10-20 (owner A): Install_Heimdall.ps1 rewrites
-            # .obsidian/app.json from an unordered hashtable, so the same two keys come
-            # out in a different order on the second run. Allowed here; the keys are
-            # checked below so a real change would still fail.
-            $allow += ".obsidian/app.json"
-          }
           & "$env:GITHUB_WORKSPACE/.github/scripts/snapshot.ps1" -Compare -Before (Join-Path $ci "snapshot_before.tsv") -After (Join-Path $ci "snapshot_after.tsv") -Allow $allow 2>&1 | Tee-Object -FilePath (Join-Path $ci "second_run_changes.txt")
-          $code = $LASTEXITCODE
-          if ($IsWindows) {
-            $app = Get-Content (Join-Path $HOME "Second_Brain/.obsidian/app.json") -Raw | ConvertFrom-Json
-            if ($app.attachmentFolderPath -ne "Assets" -or $app.alwaysUpdateLinks -ne $true -or @($app.PSObject.Properties).Count -ne 2) {
-              Write-Host "::error::.obsidian/app.json changed in content, not only in key order"; $code = 1
-            } else { Write-Host "  .obsidian/app.json: same two keys and values, key order only" }
-          }
-          exit $code
+          exit $LASTEXITCODE
 
       - name: Assert the second install
         shell: pwsh
