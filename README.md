@@ -40,7 +40,11 @@ short and commented.
 curl -fsSL https://raw.githubusercontent.com/bradykrowe/Heimdall-Research_Edition/v0.1.0-beta/get.sh | bash
 ```
 
-The questions are the same on both systems; the Windows recording below shows them.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/install_mac_dark.gif">
+  <img src="docs/img/install_mac_light.gif" alt="A Terminal window on a clean Mac. The install line is pasted, the release is downloaded and checked, the installer asks its questions, builds the vault and ends by opening the setup window.">
+</picture>
+The install on a clean Mac, recorded on a GitHub macOS runner. The questions are the same on both systems.
 
 If your Mac is managed and you are not an administrator, the script says so and
 stops before installing anything. Ask IT to install Obsidian, Node.js, Python
@@ -74,13 +78,23 @@ Gatekeeper and SmartScreen prompts.
 
 ## After the install
 
-1. Open the vault in Obsidian and turn on the Local REST API plugin. Paste its
-   key into `System/secrets/obsidian.env`. The installer wired everything else.
-2. Open the vault folder in the Claude desktop app, Code tab, and type
-   `/bootstrap`. The first five questions take five minutes.
-3. Drop one PDF into `Literature/` and run `/paper`.
+The installer ends by opening a setup window in your browser. It runs on your
+computer only and makes no network calls. It shows the remaining steps and
+ticks them off as you go:
 
-`START_HERE.md` in the vault walks through all three.
+1. Open the vault in Obsidian. Your vault is already in the picker; say yes
+   when Obsidian asks to turn on community plugins.
+2. Wire the connector key. The window reads the Local REST API key from
+   Obsidian and writes it to `System/secrets/obsidian.env` with one click, or
+   takes it pasted. The key never leaves your machine.
+3. Open the vault folder in the Claude desktop app, Code tab, and type
+   `/bootstrap`. The window follows the interview as it goes. The first five
+   questions take five minutes.
+
+Closed the window? From the vault folder, `python3 System/bin/onboard/server.py`
+(macOS) or `python System\bin\onboard\server.py` (Windows) opens it again.
+`START_HERE.md` in the vault has the same steps in writing, including how to
+do each one by hand. Then drop one PDF into `Literature/` and run `/paper`.
 
 ## What is in the zip
 
@@ -94,7 +108,7 @@ Gatekeeper and SmartScreen prompts.
 | `Install_Heimdall.ps1`, `install_heimdall.sh` | The installers, plain text, commented |
 | `payload/vault/` | The starter vault: Lab, Literature, Projects, Manuscripts, Grants, Teaching, Service, People and the system folders, with templates |
 | `payload/claude/commands/` | 28 thinking commands, including `/paper`, `/protocol` and `/today` |
-| `payload/claude/skills/` | 9 skills |
+| `payload/claude/skills/` | 8 skills |
 | `manifest/plugins.json` | The Obsidian plugins, by tier, with a reason for each |
 
 ## Beta
