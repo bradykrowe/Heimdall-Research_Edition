@@ -119,4 +119,10 @@ INNER="$(find "$UNPACK" -mindepth 1 -maxdepth 1 -type d | head -n1)"
 say "Starting the installer from $INNER"
 say ""
 cd "$INNER"
+# Through "curl | bash" this script arrives on stdin, so the installer's
+# questions would read end of file and take their defaults without a pause.
+# Hand it the keyboard when there is one; CI and other pipes keep stdin.
+if [ ! -t 0 ] && { : < /dev/tty; } 2>/dev/null; then
+  exec bash ./install_heimdall.sh "$@" < /dev/tty
+fi
 exec bash ./install_heimdall.sh "$@"

@@ -1,0 +1,129 @@
+# Record the macOS install for the README's install GIF.
+#
+# One macOS runner, stripped the same way install.yml strips it, then the
+# one-line install typed into a real terminal and recorded as an asciicast.
+# Afterwards the vault is opened in Obsidian and the screen captured. The
+# cast and the capture come back as a workflow artifact; the GIF is rendered
+# from the cast offline. By hand only: a macOS minute costs ten.
+
+name: record
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: macOS runner
+        type: choice
+        default: macos-15
+        options:
+          - macos-15
+          - macos-14
+      ref:
+        description: Branch or tag whose get.sh runs (the typed line always shows the Release tag)
+        type: string
+        default: main
+      tag:
+        description: Release tag the typed line shows and HEIMDALL_TAG points at
+        type: string
+        default: v0.1.0-beta
+
+permissions:
+  contents: read
+
+jobs:
+  record:
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/record
+
+      - name: Strip the macOS image
+        shell: bash
+        run: |
+          set -uo pipefail
+          for p in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+            if [ -x "$p" ]; then
+              NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/uninstall.sh)" -- --force --path="$(dirname "$(dirname "$p")")" || true
+            fi
+          done
+          sudo rm -rf /opt/homebrew /usr/local/Homebrew /usr/local/Cellar /usr/local/Caskroom \
+            "$HOME/Library/Caches/Homebrew" "$HOME/Library/Logs/Homebrew" \
+            "$HOME/hostedtoolcache/node" /usr/local/lib/node_modules \
+            "$HOME/.npm" "$HOME/.claude" "$HOME/.heimdall" "$HOME/Second_Brain" /Applications/Obsidian.app
+          sudo rm -rf /Library/Frameworks/Python.framework /Applications/Python* "$HOME/hostedtoolcache/Python" \
+            /usr/local/bin/python* /usr/local/bin/pip* /usr/local/bin/idle* /usr/local/bin/pydoc*
+          sudo find -L /usr/local/bin /usr/local/lib /usr/local/share /usr/local/opt -type l -delete 2>/dev/null || true
+          hash -r
+          for c in brew node npm npx claude; do
+            while p="$(command -v "$c" 2>/dev/null)"; do echo "removing $p"; sudo rm -f "$p"; hash -r; done
+          done
+          for f in "$HOME/.zprofile" "$HOME/.zshrc" "$HOME/.bash_profile" "$HOME/.bashrc" "$HOME/.profile"; do
+            [ -f "$f" ] && sed -i '' '/brew shellenv/d' "$f"
+          done
+          echo "PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin" >> "$GITHUB_ENV"
+          for c in brew node claude; do command -v "$c" && { echo "::error::$c still present"; exit 1; }; done
+          echo "clean: $(uname -m), macOS $(sw_vers -productVersion), $(python3 --version 2>&1)"
+
+      - name: Record the install
+        shell: bash
+        env:
+          REF: ${{ inputs.ref }}
+          HEIMDALL_TAG: ${{ inputs.tag }}
+        run: |
+          set -uo pipefail
+          export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin; hash -r
+          mkdir -p "$RUNNER_TEMP/rec"
+          cp .github/record/record_install.py "$RUNNER_TEMP/record_install.py"
+          cd "$HOME"
+          # The line a lab member pastes, with the Release tag. get.sh itself is
+          # read from $REF so a fix on main can be recorded before the tag moves.
+          LINE="curl -fsSL https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$HEIMDALL_TAG/get.sh | bash"
+          if [ "$REF" != "$HEIMDALL_TAG" ]; then
+            LINE="curl -fsSL https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$REF/get.sh | bash"
+          fi
+          echo "typing: $LINE"
+          python3 "$RUNNER_TEMP/record_install.py" --out "$RUNNER_TEMP/rec/install_mac.cast" \
+            --cols 100 --rows 30 --prompt '~ % ' --type "$LINE" 2>&1 | tee "$RUNNER_TEMP/rec/recorder.txt"
+          echo "recorder exit: ${PIPESTATUS[0]}"
+          cp "$HOME"/Downloads/*/*/install_log.txt "$RUNNER_TEMP/rec/install_log.txt" 2>/dev/null || true
+
+      - name: After the install
+        if: always()
+        shell: bash
+        run: |
+          set -uo pipefail
+          for p in /opt/homebrew/bin/brew /usr/local/bin/brew; do [ -x "$p" ] && eval "$("$p" shellenv)" && break; done
+          hash -r
+          {
+            echo "## versions"; for c in node npm claude python3 brew; do printf '%-8s %s  %s\n' "$c" "$(command -v $c || echo missing)" "$($c --version 2>&1 | head -n1)"; done
+            echo; echo "## ~/Second_Brain"; ls -1 "$HOME/Second_Brain" 2>&1
+            echo; echo "## ~/Second_Brain/System"; ls -1 "$HOME/Second_Brain/System" 2>&1
+            echo; echo "## ~/.claude"; ls -1 "$HOME/.claude" 2>&1
+            echo; echo "## START_HERE.md"; head -n 40 "$HOME/Second_Brain/START_HERE.md" 2>&1
+            echo; echo "## display"; system_profiler SPDisplaysDataType 2>/dev/null | grep -i resolution || true
+          } > "$RUNNER_TEMP/rec/after_install.txt" 2>&1
+          cat "$RUNNER_TEMP/rec/after_install.txt"
+          # Screen capture of the vault in Obsidian: best effort.
+          if [ -d /Applications/Obsidian.app ]; then
+            xattr -dr com.apple.quarantine /Applications/Obsidian.app 2>/dev/null || true
+            open -a Obsidian "obsidian://open?path=$HOME/Second_Brain" || open -a Obsidian || true
+            sleep 25
+            open -a Obsidian "obsidian://open?path=$HOME/Second_Brain" || true
+            sleep 10
+            screencapture -x "$RUNNER_TEMP/rec/obsidian_1.png" || true
+            osascript -e 'tell application "System Events" to get name of every process whose background only is false' > "$RUNNER_TEMP/rec/front_apps.txt" 2>&1 || true
+            osascript -e 'tell application "Obsidian" to activate' 2>/dev/null || true
+            sleep 5
+            screencapture -x "$RUNNER_TEMP/rec/obsidian_2.png" || true
+            ls -la "$RUNNER_TEMP/rec"
+          fi
+
+      - name: Upload the recording
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: record-${{ inputs.runner }}
+          path: ${{ runner.temp }}/rec
+          if-no-files-found: warn
