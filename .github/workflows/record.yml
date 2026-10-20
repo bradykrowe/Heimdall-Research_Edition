@@ -33,7 +33,7 @@ permissions:
 jobs:
   record:
     runs-on: ${{ inputs.runner }}
-    timeout-minutes: 45
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
@@ -87,7 +87,8 @@ jobs:
           python3 "$RUNNER_TEMP/record_install.py" --out "$RUNNER_TEMP/rec/install_mac.cast" \
             --cols 100 --rows 30 --prompt '~ % ' --type "$LINE" 2>&1 | tee "$RUNNER_TEMP/rec/recorder.txt"
           echo "recorder exit: ${PIPESTATUS[0]}"
-          cp "$HOME"/Downloads/*/*/install_log.txt "$RUNNER_TEMP/rec/install_log.txt" 2>/dev/null || true
+          log="$(find "$HOME/Downloads" -maxdepth 3 -name install_log.txt 2>/dev/null | head -n1)"
+          [ -n "$log" ] && cp "$log" "$RUNNER_TEMP/rec/install_log.txt" || echo "no install_log.txt under ~/Downloads"
 
       - name: After the install
         if: always()
@@ -98,6 +99,8 @@ jobs:
           hash -r
           {
             echo "## versions"; for c in node npm claude python3 brew; do printf '%-8s %s  %s\n' "$c" "$(command -v $c || echo missing)" "$($c --version 2>&1 | head -n1)"; done
+            echo; echo "## home"; ls -1 "$HOME" 2>&1
+            echo; echo "## START_HERE.md anywhere under home (depth 3)"; find "$HOME" -maxdepth 3 -name START_HERE.md 2>/dev/null
             echo; echo "## ~/Second_Brain"; ls -1 "$HOME/Second_Brain" 2>&1
             echo; echo "## ~/Second_Brain/System"; ls -1 "$HOME/Second_Brain/System" 2>&1
             echo; echo "## ~/.claude"; ls -1 "$HOME/.claude" 2>&1

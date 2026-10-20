@@ -31,7 +31,7 @@ ANSWERS = [
     (r"Press RETURN/ENTER to continue or any other key to abort:?\s*$", "\r", 1.2),
     (r"Vault path \[[^\]]*\]: $",                       "\r",  2.0),
     (r"Paste its path, or press Return to skip: $",     "\r",  1.4),
-    (r"Open the vault in Obsidian now\? \[Y/n\] $",     "y\r", 1.6),
+    (r"Open the vault in Obsidian now\? \[Y/n\] $",     "n\r", 1.6),
     (r"Start Claude in the vault now\? \[Y/n\] $",      "n\r", 1.6),
     (r"Press Return to close\.\s*$",                    "\r",  1.0),
     # Anything else with a yes default: say yes. A no default: take it.
@@ -48,7 +48,8 @@ def main():
     ap.add_argument("--shell", default="bash --noprofile --norc -i")
     ap.add_argument("--prompt", default="~ % ", help="PS1 for the shell; also what we wait for")
     ap.add_argument("--type", required=True, help="the line to type at the first prompt")
-    ap.add_argument("--idle-timeout", type=float, default=900.0)
+    ap.add_argument("--idle-timeout", type=float, default=240.0)
+    ap.add_argument("--max-seconds", type=float, default=1500.0, help="hard stop for the whole recording")
     ap.add_argument("--keystroke", type=float, default=0.045)
     a = ap.parse_args()
 
@@ -118,23 +119,48 @@ def main():
                 os.kill(pid, signal.SIGTERM); exit_code = 125; break
             if time.time() - last_output > a.idle_timeout:
                 print("no output for %.0fs; stopping" % a.idle_timeout, flush=True)
-                os.kill(pid, signal.SIGTERM)
                 exit_code = 124
                 break
+        if time.time() - t0 > a.max_seconds:
+            print("recording longer than %.0fs; stopping" % a.max_seconds, flush=True)
+            exit_code = 124
+            break
 
-    try:
-        _, status = os.waitpid(pid, 0)
-        if exit_code is None:
-            exit_code = os.WEXITSTATUS(status) if os.WIFEXITED(status) else 128
-    except ChildProcessError:
-        pass
-
+    # Write the cast first: whatever happens to the shell below, the recording is on disk.
     header = {"version": 2, "width": a.cols, "height": a.rows, "timestamp": int(t0),
               "env": {"TERM": "xterm-256color", "SHELL": a.shell.split()[0]}}
     with open(a.out, "w", encoding="utf-8") as f:
         f.write(json.dumps(header) + "\n")
         for ev in events:
             f.write(json.dumps(ev, ensure_ascii=False) + "\n")
+
+    # Then reap the shell. An interactive bash ignores SIGTERM, so a stuck session
+    # gets SIGHUP for its whole process group, then SIGKILL, with a bounded wait.
+    def reap(deadline):
+        while time.time() < deadline:
+            try:
+                wpid, status = os.waitpid(pid, os.WNOHANG)
+            except ChildProcessError:
+                return None
+            if wpid == pid:
+                return status
+            time.sleep(0.2)
+        return False
+    status = reap(time.time() + (8 if exit_code is None else 2))
+    for sig in (signal.SIGHUP, signal.SIGKILL):
+        if status is not False:
+            break
+        try:
+            os.killpg(os.getpgid(pid), sig)
+        except (ProcessLookupError, PermissionError, OSError):
+            pass
+        status = reap(time.time() + 5)
+    if exit_code is None and status not in (None, False):
+        exit_code = os.WEXITSTATUS(status) if os.WIFEXITED(status) else 128
+    try:
+        os.close(fd)
+    except OSError:
+        pass
     print("wrote %s: %d events, %.0fs, shell exit %s, final state %s"
           % (a.out, len(events), events[-1][0] if events else 0, exit_code, state), flush=True)
     sys.exit(0 if state == "done" else 1)
