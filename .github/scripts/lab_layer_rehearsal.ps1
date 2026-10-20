@@ -58,7 +58,11 @@ Check ($null -ne $recA.lab_link.checked_at) "lab_link.checked_at set" "lab_link.
 Check ((Read-Text (Join-Path $vA "System/health_baseline.md")).Contains("role:               pi")) "baseline carries the role" "baseline lacks 'role:               pi'"
 $labItem = Get-Item -LiteralPath (Join-Path $vA "Lab") -Force
 Check (($labItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) "Lab/ is a link, not a copy" "Lab/ is not a reparse point"
-Check (@(Get-ChildItem -LiteralPath $vA -Directory -Filter "Lab.local_*").Count -eq 1) "old local Lab/ kept beside the link as Lab.local_<date>" "Lab.local_* count is not 1"
+# lab_link.py keeps the old local Lab/ as Lab.local_<date>/ only when a file could
+# not be carried into the shared folder; the shipped scaffold carries in full, so
+# a fresh install leaves no local copy behind (bundle 2026-10-20, M5).
+$kept = @(Get-ChildItem -LiteralPath $vA -Directory -Filter "Lab.local_*").Count
+Check ($kept -eq 0) "local Lab/ removed after a full carry, no Lab.local_* left" "Lab.local_* count is $kept, expected 0 after a full carry of the scaffold"
 Check ((Test-Path -LiteralPath (Join-Path $shared "protocols/README.md")) -and (Test-Path -LiteralPath (Join-Path $shared "glossary.md"))) "scaffold carried into the shared folder" "shared folder lacks protocols/README.md or glossary.md"
 Check (-not (Test-Path -LiteralPath (Join-Path $shared "roster.md"))) "no roster shipped" "roster.md shipped into the shared folder"
 Check (@(Get-ChildItem -LiteralPath $shared -Force -Filter ".heimdall_canary_*").Count -eq 0) "canary cleaned up" "canary files left in the shared folder"

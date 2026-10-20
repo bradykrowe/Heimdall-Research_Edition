@@ -32,6 +32,13 @@ on:
         description: Release tag to install from
         type: string
         default: v0.1.0-beta
+      jobs:
+        description: all, or vault-only to skip the install job (update, lab-layer, feedback only)
+        type: choice
+        default: all
+        options:
+          - all
+          - vault-only
   release:
     types: [published]
 
@@ -69,6 +76,7 @@ jobs:
 
   install:
     needs: plan
+    if: ${{ github.event_name == 'release' || inputs.jobs != 'vault-only' }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
