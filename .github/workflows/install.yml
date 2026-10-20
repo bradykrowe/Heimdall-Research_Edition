@@ -139,6 +139,7 @@ jobs:
         run: |
           $ErrorActionPreference = "Continue"
           Write-Host "== before =="
+          Write-Host "  NPM_CONFIG_PREFIX = '$env:NPM_CONFIG_PREFIX'"
           foreach ($c in @("node", "npm", "python", "python3", "py", "claude", "winget")) {
             $g = Get-Command $c -ErrorAction SilentlyContinue
             if ($g) { Write-Host "  $c -> $($g.Source)" }
@@ -179,6 +180,11 @@ jobs:
           }
           $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
           "PATH=$env:Path" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          # 5. The image sets NPM_CONFIG_PREFIX=C:\npm\prefix for the runner process, so
+          # npm -g would put claude.cmd there instead of %APPDATA%\npm, the default a
+          # lab machine has (run 3 finding). Point it at the default for later steps.
+          "NPM_CONFIG_PREFIX=$env:APPDATA\npm" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          [Environment]::SetEnvironmentVariable("NPM_CONFIG_PREFIX", $null, "Machine")
           Write-Host "stripped"
 
       - name: Assert the Windows image is clean

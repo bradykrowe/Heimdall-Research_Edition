@@ -63,7 +63,9 @@ check(run.returncode == 0, "feedback.py exit 0", "feedback.py exit " + str(run.r
 check("Report number FB-" in out, "intake answered with a report number", "no 'Report number FB-' in the output (queued or refused)")
 marker = "This is exactly what will be sent"
 check(marker in out, "payload printed before the send", "payload marker missing")
-payload_text = out.split(marker, 1)[1] if marker in out else out
+# the marker line ends in "(<channel> intake):", the JSON starts at the next "{"
+after = out[out.index(marker):] if marker in out else out
+payload_text = after[after.index("{"):] if "{" in after else after
 check(canary not in payload_text, "canary string absent from the payload", "canary string leaked into the payload")
 user = getpass.getuser()
 check(user not in payload_text, "runner user name absent from the payload", "runner user name '" + user + "' appears in the payload")

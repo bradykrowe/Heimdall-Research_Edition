@@ -125,7 +125,9 @@ Check ($obsidianTree -eq (TreeHash (Join-Path $Vault ".obsidian"))) ".obsidian/ 
 Check ($mineHash -eq (Hash (Join-Path $Vault "Projects/mine.md"))) "personal file untouched" "personal file changed"
 $rec1 = Record
 Check ("$($rec1.tag)" -eq $newTag) "record tag is $newTag" "record tag is $($rec1.tag)"
-Check ("$($rec1.updated_at)" -match "^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$") "updated_at is UTC and ends in Z" "updated_at is '$($rec1.updated_at)'"
+# read the raw text: ConvertFrom-Json turns ISO stamps into DateTime objects
+$rawRec = Read-Text $recPath
+Check ($rawRec -match '"updated_at":\s*"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"') "updated_at is UTC and ends in Z" "updated_at in the record is not an ISO UTC stamp ending in Z"
 Check ("$($rec1.installed_at)" -eq "$($rec0.installed_at)") "installed_at kept" "installed_at changed"
 Check ($null -ne $rec1.files.".claude/commands/ci_newcmd.md") "files map follows the new manifest" "files map lacks the new command"
 $snaps = @(Get-ChildItem -LiteralPath (Join-Path $Vault "System/.heimdall_backup") -Directory)

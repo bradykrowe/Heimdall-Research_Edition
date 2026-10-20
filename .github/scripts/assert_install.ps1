@@ -176,6 +176,14 @@ if ($onWin) {
         $g = Get-Command $c -ErrorAction SilentlyContinue
         Check ($null -ne $g) "$c on PATH at $($g.Source)" "$c not found on the registry PATH"
     }
+    # where npm put the global shims; the installer expects %APPDATA%\npm
+    $npmPrefix = ""
+    try { $npmPrefix = (& cmd /c "npm prefix -g 2>nul" | Select-Object -First 1) } catch { }
+    Write-Host "  npm prefix -g: '$npmPrefix'  NPM_CONFIG_PREFIX: '$env:NPM_CONFIG_PREFIX'"
+    foreach ($d in @("$env:APPDATA\npm", "$npmPrefix", "C:\npm\prefix") | Where-Object { $_ } | Select-Object -Unique) {
+        $c = Join-Path $d "claude.cmd"
+        Write-Host "  $c : $(if (Test-Path -LiteralPath $c) { 'present' } else { 'absent' })"
+    }
     $pv = ""
     try { $pv = & python -c "import sys; print(sys.version_info[0]*100+sys.version_info[1])" 2>&1 | Select-Object -First 1 } catch { }
     Check ("$pv" -match "^\d+$" -and [int]$pv -ge 311) "python reports 3.11 or newer ($pv)" "python version probe failed or too old ($pv)"
