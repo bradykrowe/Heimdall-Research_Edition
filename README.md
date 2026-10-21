@@ -99,7 +99,7 @@ checks each one off as you go:
    you can paste it in. The key stays on your computer.
 3. Open the vault folder in the Claude desktop app's Code tab and type
    `/bootstrap`. The window follows along as you answer. The first five
-   questions take about five minutes.
+   questions take about ten minutes.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/img/onboard_setup_dark.gif">
