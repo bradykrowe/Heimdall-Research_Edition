@@ -91,6 +91,12 @@ ticks them off as you go:
    `/bootstrap`. The window follows the interview as it goes. The first five
    questions take five minutes.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/onboard_setup_dark.gif">
+  <img src="docs/img/onboard_setup_light.gif" alt="The setup window in a browser. Obsidian opens on the vault, the connector key is found and wired with one click, Open Claude copies /bootstrap, six answers appear as the interview runs, and the window ends on a recap of what setup recorded.">
+</picture>
+The setup window from start to finish, recorded against a demo vault.
+
 Closed the window? From the vault folder, `python3 System/bin/onboard/server.py`
 (macOS) or `python System\bin\onboard\server.py` (Windows) opens it again.
 `START_HERE.md` in the vault has the same steps in writing, including how to
