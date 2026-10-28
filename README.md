@@ -38,7 +38,7 @@ unzips it and starts the installer. [get.sh](get.sh) is short and commented if
 you want to read it first.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/bradykrowe/Heimdall-Research_Edition/v0.1.1-beta/get.sh | bash
+curl -fsSL https://raw.githubusercontent.com/bradykrowe/Heimdall-Research_Edition/v0.1.2-beta/get.sh | bash
 ```
 
 This has to be one line. If your email split it in two, join it back together
@@ -66,7 +66,7 @@ Paste this into PowerShell. [get.ps1](get.ps1) is there if you want to read it
 first.
 
 ```powershell
-irm https://raw.githubusercontent.com/bradykrowe/Heimdall-Research_Edition/v0.1.1-beta/get.ps1 | iex
+irm https://raw.githubusercontent.com/bradykrowe/Heimdall-Research_Edition/v0.1.2-beta/get.ps1 | iex
 ```
 
 <picture>
@@ -81,7 +81,7 @@ Click More info, then Run anyway.
 ### By hand
 
 Download the zip and its `.sha256` file from the
-[release page](https://github.com/bradykrowe/Heimdall-Research_Edition/releases/tag/v0.1.1-beta),
+[release page](https://github.com/bradykrowe/Heimdall-Research_Edition/releases/tag/v0.1.2-beta),
 check the hash, unzip, and double click `Install_Heimdall.cmd` (Windows) or
 `Install_Heimdall.command` (macOS). The README in the zip explains the
 Gatekeeper and SmartScreen prompts.

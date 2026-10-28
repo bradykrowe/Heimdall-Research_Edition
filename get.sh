@@ -2,7 +2,7 @@
 # Heimdall Lab Edition: download, verify and install on macOS.
 #
 # One line, pasted into Terminal:
-#   curl -fsSL https://raw.githubusercontent.com/bradykrowe/Heimdall-Research_Edition/v0.1.1-beta/get.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/bradykrowe/Heimdall-Research_Edition/v0.1.2-beta/get.sh | bash
 #
 # Pass installer flags after "bash -s --", for example:
 #   ... | bash -s -- --skip-software
@@ -21,7 +21,7 @@
 set -eu
 
 REPO="bradykrowe/Heimdall-Research_Edition"
-TAG="${HEIMDALL_TAG:-v0.1.1-beta}"
+TAG="${HEIMDALL_TAG:-v0.1.2-beta}"
 DEST="${HEIMDALL_GET_DIR:-$HOME/Downloads}"
 
 # Private beta only: a GitHub token in HEIMDALL_GITHUB_TOKEN (or GH_TOKEN)
