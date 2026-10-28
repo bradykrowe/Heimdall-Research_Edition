@@ -2,10 +2,10 @@
     Heimdall Lab Edition: download, verify and install on Windows.
 
     One line, pasted into PowerShell:
-      irm https://raw.githubusercontent.com/bradykrowe/Heimdall-Research_Edition/v0.1.2-beta/get.ps1 | iex
+      irm https://raw.githubusercontent.com/bradykrowe/Heimdall-Research_Edition/v0.1.3-beta/get.ps1 | iex
 
     To pass installer flags, download the script first and run it:
-      irm https://raw.githubusercontent.com/bradykrowe/Heimdall-Research_Edition/v0.1.2-beta/get.ps1 -OutFile get.ps1
+      irm https://raw.githubusercontent.com/bradykrowe/Heimdall-Research_Edition/v0.1.3-beta/get.ps1 -OutFile get.ps1
       powershell -ExecutionPolicy Bypass -File .\get.ps1 -SkipSoftware
 
     What it does, in order:
@@ -18,7 +18,7 @@
     winget for the software step, which may prompt on its own.
 #>
 param(
-    [string]$Tag = $(if ($env:HEIMDALL_TAG) { $env:HEIMDALL_TAG } else { "v0.1.2-beta" }),
+    [string]$Tag = $(if ($env:HEIMDALL_TAG) { $env:HEIMDALL_TAG } else { "v0.1.3-beta" }),
     [string]$VaultPath = "",
     [switch]$SkipSoftware,
     [switch]$Unattended,

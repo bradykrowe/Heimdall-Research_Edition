@@ -25,7 +25,7 @@ on:
       tag:
         description: Release tag the typed line shows and HEIMDALL_TAG points at
         type: string
-        default: v0.1.2-beta
+        default: v0.1.3-beta
 
 permissions:
   contents: read
