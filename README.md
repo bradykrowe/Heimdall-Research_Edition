@@ -98,12 +98,12 @@ checks each one off as you go:
    Obsidian and save it to `System/secrets/obsidian.env` with one click, or
    you can paste it in. The key stays on your computer.
 3. Open the vault folder in the Claude desktop app's Code tab and type
-   `/bootstrap`. The window follows along as you answer. The first five
-   questions take about ten minutes.
+   `/setup`. The window follows along as you answer. The first five
+   questions take about ten minutes; the rest, about 20, can wait.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/img/onboard_setup_dark.gif">
-  <img src="docs/img/onboard_setup_light.gif" alt="The setup window in a browser. Obsidian opens on the vault, the connector key is found and wired with one click, Open Claude copies /bootstrap, six answers appear as the interview runs, and the window ends on a recap of what setup recorded.">
+  <img src="docs/img/onboard_setup_light.gif" alt="The setup window in a browser. Obsidian opens on the vault, the connector key is found and wired with one click, Open Claude copies /setup, six answers appear as the interview runs, and the window ends on a recap of what setup recorded.">
 </picture>
 The setup window from start to finish, recorded against a demo vault.
 
@@ -125,7 +125,7 @@ including how to do each one without the window. After that, drop a PDF into
 | `Install_Heimdall.cmd`, `Install_Heimdall.command` | Double-click launchers |
 | `Install_Heimdall.ps1`, `install_heimdall.sh` | The installers, plain text with comments |
 | `payload/vault/` | The starter vault: Lab, Literature, Projects, Manuscripts, Grants, Teaching, Service, People and system folders, with templates |
-| `payload/claude/commands/` | 28 commands, including `/paper`, `/protocol` and `/today` |
+| `payload/claude/commands/` | 29 commands, including `/paper`, `/protocol` and `/today` |
 | `payload/claude/skills/` | 8 skills |
 | `manifest/plugins.json` | The Obsidian plugins it installs, grouped by tier, with what each is for |
 
